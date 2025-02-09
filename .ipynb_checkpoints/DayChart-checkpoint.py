@@ -4,6 +4,7 @@ import time
 from TickerDict import tickers  
 # Assuming TickerDict.py contains the tickers dictionary
 
+
 class StockDataProcessor:
     def __init__(self, kiwoom, s = tickers):
         self.kiwoom = kiwoom
