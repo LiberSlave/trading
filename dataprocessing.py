@@ -2,6 +2,7 @@ import pandas as pd
 import mplfinance as mpf
 import time
 from TickerDict import tickers  
+import pymysql
 # Assuming TickerDict.py contains the tickers dictionary
 
 
@@ -79,18 +80,85 @@ class StockDataProcessor:
 
         return df
 
+
+class StockDataLoader:
+    def __init__(self, host='127.0.0.1', user='root', password='219423', db='trading', charset='utf8mb4'):
+        """
+        데이터베이스 연결을 초기화합니다.
+        """
+        self.conn = pymysql.connect(
+            host=host,
+            user=user,
+            password=password,
+            db=db,
+            charset=charset
+        )
+        self.cur = self.conn.cursor()
+    
+    def select_from(self, stock_name, date):
+        """
+        stock_name과 date를 조합한 테이블에서 데이터를 읽어 DataFrame으로 반환합니다.
+        예를 들어, stock_name이 '현대힘스'이고 date가 '20250210'이면,
+        '20250210현대힘스' 테이블에서 데이터를 읽어옵니다.
+        """
+        query = f"SELECT * FROM {date}{stock_name}"
+        df = pd.read_sql(query, self.conn)
+        
+        # datetime 컬럼을 인덱스로 설정하고 datetime 형식으로 변환
+        df.set_index("datetime", inplace=True)
+        df.index = pd.to_datetime(df.index)
+        return df
+    
+    def close(self):
+        """
+        데이터베이스 연결을 종료합니다.
+        """
+        self.cur.close()
+        self.conn.close()
+
+        
+        
+        
+
+        
+class StockChartVisualizer:
+    """
+    주식 차트를 시각화하는 클래스입니다.
+    데이터프레임에 10일 및 20일 이동평균을 추가하고,
+    캔들스틱 차트와 거래량(또는 TradingValue)를 함께 플롯합니다.
+    """
+    
     def add_moving_averages(self, df):
-        """Add 10-day and 20-day moving averages to the DataFrame."""
+        """
+        DataFrame에 10일 및 20일 이동평균을 추가합니다.
+        
+        인수:
+            df (pandas.DataFrame): 'Close' 컬럼을 포함한 DataFrame
+        
+        반환:
+            pandas.DataFrame: 이동평균 컬럼이 추가된 DataFrame
+        """
         df["10DMA"] = df["Close"].rolling(window=10).mean()
         df["20DMA"] = df["Close"].rolling(window=20).mean()
         return df
 
     def plot_candlestick(self, df):
-        """Plot the candlestick chart with moving averages."""
+        """
+        이동평균선이 포함된 캔들스틱 차트를 플롯하고,
+        matplotlib의 Figure와 Axes 객체를 반환합니다.
+        
+        인수:
+            df (pandas.DataFrame): 시계열 데이터를 포함하는 DataFrame. 
+                                   'Close', 'TradingValue' 등의 컬럼이 필요합니다.
+        
+        반환:
+            tuple: (fig, axes) - matplotlib Figure와 Axes 객체
+        """
+        # 사용자 정의 마켓 컬러와 스타일 설정
         custom_colors = mpf.make_marketcolors(up="red", down="blue", wick="black", edge="black")
         custom_style = mpf.make_mpf_style(marketcolors=custom_colors, gridcolor="gray", gridstyle="--")
 
-        # Check if the DataFrame contains 10DMA and 20DMA columns
+        # DataFrame에 이동평균 컬럼이 있는지 확인하고, addplot 목록 구성
         if "10DMA" in df.columns and "20DMA" in df.columns:
             add_plots = [
                 mpf.make_addplot(df["10DMA"], color="navy", width=1.0, linestyle="solid"),
@@ -102,13 +170,16 @@ class StockDataProcessor:
                 mpf.make_addplot(df["TradingValue"], panel=1, color="gray", type="bar")
             ]
 
-        mpf.plot(
+        # mplfinance를 이용해 차트를 플롯하고 Figure와 Axes 반환
+        fig, axes = mpf.plot(
             df,
             type="candle",
             style=custom_style,
-            title="name",
+            title="Stock Chart",
             ylabel="Price",
             ylabel_lower="Trading Value",
             volume=False,
-            addplot=add_plots
+            addplot=add_plots,
+            returnfig=True
         )
+        return fig, axes
