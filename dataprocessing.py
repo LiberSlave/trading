@@ -80,7 +80,93 @@ class StockDataProcessor:
 
         return df
 
+class DBsave:
+    def __init__(self, host='127.0.0.1', user='root', password='219423', db='trading', charset='utf8mb4'):
+        """
+        데이터베이스에 연결하고 커서를 초기화합니다.
+        """
+        self.conn = pymysql.connect(
+            host=host,
+            user=user,
+            password=password,
+            db=db,
+            charset=charset
+        )
+        self.cur = self.conn.cursor()
+    
+    def create_table(self, stock_name, date):
+        """
+        주어진 stock_name과 date를 조합하여 테이블을 생성합니다.
+        예: date가 '20250210'이고 stock_name이 '현대힘스'이면 테이블 이름은 '20250210현대힘스'
+        """
+        table_query = f"""
+        CREATE TABLE IF NOT EXISTS {date}{stock_name} (
+            datetime DATE,
+            Open INT,
+            High INT,
+            Low INT,
+            Close INT,
+            Changes INT,
+            ChangeRate FLOAT,
+            Volume INT,
+            TradingValue FLOAT,
+            Program INT,
+            ForeignNetBuy INT,
+            InstitutionNetBuy INT,
+            IndividualNetBuy INT,
+            PRIMARY KEY (datetime)
+        );
+        """
+        self.cur.execute(table_query)
+        # 테이블 생성 쿼리 반환(디버깅용)
+        return table_query
 
+    def insert_table(self, stock_name, date, df):
+        """
+        주어진 DataFrame(df)의 데이터를 지정한 테이블에 삽입합니다.
+        테이블 이름은 date와 stock_name을 조합한 것으로 가정합니다.
+        DataFrame의 인덱스는 datetime 값이며, 각 컬럼은 테이블 컬럼과 일치해야 합니다.
+        """
+        insert_query = f"""
+        INSERT IGNORE INTO {date}{stock_name} (
+            datetime, Open, High, Low, Close, Changes, ChangeRate, Volume, TradingValue, Program,
+            ForeignNetBuy, InstitutionNetBuy, IndividualNetBuy
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        """
+        # DataFrame의 각 행을 순회하며 데이터를 삽입합니다.
+        for index, row in df.iterrows():
+            self.cur.execute(insert_query, (
+                index,  # DataFrame의 인덱스가 datetime 값
+                row["Open"],
+                row["High"],
+                row["Low"],
+                row["Close"],
+                row["Changes"],
+                row["ChangeRate"],
+                row["Volume"],
+                row["TradingValue"],
+                row["Program"],
+                row["ForeignNetBuy"],
+                row["InstitutionNetBuy"],
+                row["IndividualNetBuy"]
+            ))
+        # 모든 삽입 작업 후 commit
+        self.conn.commit()
+    
+    def commit(self):
+        """
+        변경사항을 커밋합니다.
+        """
+        self.conn.commit()
+    
+    def close(self):
+        """
+        데이터베이스 연결과 커서를 종료합니다.
+        """
+        self.cur.close()
+        self.conn.close()
+        
+        
 class StockDataLoader:
     def __init__(self, host='127.0.0.1', user='root', password='219423', db='trading', charset='utf8mb4'):
         """
