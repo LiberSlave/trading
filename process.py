@@ -6,7 +6,7 @@ import pymysql
 # Assuming TickerDict.py contains the tickers dictionary
 
 
-class StockDataProcessor:
+class GetData:
     def __init__(self, kiwoom, s = tickers):
         self.kiwoom = kiwoom
         self.tickers = s  # Store tickers as a default attribute
@@ -31,7 +31,7 @@ class StockDataProcessor:
             )
             dfs.append(df)
             time.sleep(1)
-        return pd.concat(dfs, ignore_index=True)
+        return pd.concat(dfs, ignore_index=True) # dataframe
 
     def preprocess_data(self, df):
         """Clean and preprocess the stock data."""
@@ -100,7 +100,7 @@ class DBsave:
         예: date가 '20250210'이고 stock_name이 '현대힘스'이면 테이블 이름은 '20250210현대힘스'
         """
         table_query = f"""
-        CREATE TABLE IF NOT EXISTS {date}{stock_name} (
+        CREATE TABLE IF NOT EXISTS day_{date}_{stock_name} (
             datetime DATE,
             Open INT,
             High INT,
@@ -128,7 +128,7 @@ class DBsave:
         DataFrame의 인덱스는 datetime 값이며, 각 컬럼은 테이블 컬럼과 일치해야 합니다.
         """
         insert_query = f"""
-        INSERT IGNORE INTO {date}{stock_name} (
+        INSERT IGNORE INTO day_{date}_{stock_name} (
             datetime, Open, High, Low, Close, Changes, ChangeRate, Volume, TradingValue, Program,
             ForeignNetBuy, InstitutionNetBuy, IndividualNetBuy
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
@@ -167,7 +167,7 @@ class DBsave:
         self.conn.close()
         
         
-class StockDataLoader:
+class DBload:
     def __init__(self, host='127.0.0.1', user='root', password='219423', db='trading', charset='utf8mb4'):
         """
         데이터베이스 연결을 초기화합니다.
@@ -207,7 +207,7 @@ class StockDataLoader:
         
 
         
-class StockChartVisualizer:
+class Visualize:
     """
     주식 차트를 시각화하는 클래스입니다.
     데이터프레임에 10일 및 20일 이동평균을 추가하고,
@@ -269,3 +269,28 @@ class StockChartVisualizer:
             returnfig=True
         )
         return fig, axes
+    
+    
+    
+    
+    
+    
+def load_and_visualize(stock_name, date):
+    # 데이터 로딩: DBload 클래스의 인스턴스를 생성하여 데이터를 로드
+    data_load = DBload()
+    df = data_load.select_from(stock_name, date)
+    data_load.close()
+    
+    # 시각화: Visualize 클래스의 인스턴스를 생성하여 이동평균 추가 및 차트 플롯
+    visualization = Visualize()
+    df = visualization.add_moving_averages(df)
+    fig, axes = visualization.plot_candlestick(df)
+    
+    return fig, axes
+
+# 사용 예제
+if __name__ == '__main__':
+    fig, axes = load_and_visualize('유일에너테크', '20250211')
+    # 플롯 창을 띄워서 확인 (예: plt.show() 사용)
+    import matplotlib.pyplot as plt
+    plt.show()
