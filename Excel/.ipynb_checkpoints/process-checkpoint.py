@@ -1,23 +1,34 @@
 import pandas as pd
 import mplfinance as mpf
+import matplotlib.pyplot as plt
 import time
 from TickerDict import tickers  
 import pymysql
 # Assuming TickerDict.py contains the tickers dictionary
 
 
-class GetData:
-    def __init__(self, kiwoom, s = tickers):
-        self.kiwoom = kiwoom
-        self.tickers = s  # Store tickers as a default attribute
 
-    def get_stock_data(self, stock_name, date, max_requests=2):
-        """Fetch stock data for a given stock name and date."""
-        self.stock_name = stock_name
-        code = self.tickers.get(stock_name, None)  # Use self.tickers by default
+import pandas as pd
+import time
+from TickerDict import tickers  # tickers 딕셔너리가 정의되어 있다고 가정합니다.
+
+class GetData:
+    def __init__(self, kiwoom, tickers=tickers):
+        """
+        kiwoom API 객체와 tickers 딕셔너리를 받아서 초기화합니다.
+        """
+        self.kiwoom = kiwoom
+        self.tickers = tickers
+
+    def daily_candlestick(self, stock_name, date, max_requests=2):
+        """
+        주어진 주식(stock_name)과 날짜(date)에 대해, kiwoom API를 통해
+        주식 데이터를 여러 번 요청하여 하나의 DataFrame으로 결합하여 반환합니다.
+        """
+        code = self.tickers.get(stock_name)
         if not code:
             raise ValueError(f"Stock name '{stock_name}' not found in tickers.")
-
+        
         dfs = []
         for request_num in range(max_requests):
             next_flag = 1 if request_num == 0 else 2
@@ -31,10 +42,19 @@ class GetData:
             )
             dfs.append(df)
             time.sleep(1)
-        return pd.concat(dfs, ignore_index=True) # dataframe
+        return pd.concat(dfs, ignore_index=True)
 
-    def preprocess_data(self, df):
-        """Clean and preprocess the stock data."""
+
+class Preprocess:
+    def __init__(self):
+        pass  # 초기화할 내용이 별도로 없으면 pass
+
+    def daily_candlestick(self, df):
+        """
+        주식 데이터 DataFrame을 정리하고 전처리합니다.
+          - 불필요한 컬럼 제거, 값 치환, 데이터 타입 변환, 컬럼 이름 변경,
+          - 행 순서 뒤집기, 인덱스 설정, 절대값 변환 등 수행.
+        """
         # Drop unnecessary columns
         columns_to_drop = ["신용비", "개인", "기관", "외인수량", "외국계", "외인비", "외인보유", "외인비중", "신용잔고율"]
         df = df.drop(columns=columns_to_drop, errors='ignore')
@@ -66,19 +86,18 @@ class GetData:
             "기관순매수": "InstitutionNetBuy",
             "개인순매수": "IndividualNetBuy"
         })
-        
 
-        # Transform data
+        # Transform data: 역순 정렬 후 인덱스 설정
         df = df.iloc[::-1].reset_index(drop=True)
-        
-        # Set datetime as the index
         df.set_index("datetime", inplace=True)
-        
+        df.index = pd.to_datetime(df.index)
+
         # Apply absolute value transformation to specific columns
         columns_to_transform = ["Open", "High", "Low", "Close"]
         df[columns_to_transform] = df[columns_to_transform].abs()
 
         return df
+
 
 class DBsave:
     def __init__(self, host='127.0.0.1', user='root', password='219423', db='trading', charset='utf8mb4'):
@@ -94,7 +113,7 @@ class DBsave:
         )
         self.cur = self.conn.cursor()
     
-    def create_table(self, stock_name, date):
+    def daily_candlestick_create_table(self, stock_name, date):
         """
         주어진 stock_name과 date를 조합하여 테이블을 생성합니다.
         예: date가 '20250210'이고 stock_name이 '현대힘스'이면 테이블 이름은 '20250210현대힘스'
@@ -121,7 +140,7 @@ class DBsave:
         # 테이블 생성 쿼리 반환(디버깅용)
         return table_query
 
-    def insert_table(self, stock_name, date, df):
+    def daily_candlestick_insert_data(self, stock_name, date, df):
         """
         주어진 DataFrame(df)의 데이터를 지정한 테이블에 삽입합니다.
         테이블 이름은 date와 stock_name을 조합한 것으로 가정합니다.
@@ -181,13 +200,13 @@ class DBload:
         )
         self.cur = self.conn.cursor()
     
-    def select_from(self, stock_name, date):
+    def daily_candlestick(self, stock_name, date):
         """
         stock_name과 date를 조합한 테이블에서 데이터를 읽어 DataFrame으로 반환합니다.
         예를 들어, stock_name이 '현대힘스'이고 date가 '20250210'이면,
         '20250210현대힘스' 테이블에서 데이터를 읽어옵니다.
         """
-        query = f"SELECT * FROM {date}{stock_name}"
+        query = f"SELECT * FROM day_{date}_{stock_name}"
         df = pd.read_sql(query, self.conn)
         
         # datetime 컬럼을 인덱스로 설정하고 datetime 형식으로 변환
@@ -228,7 +247,7 @@ class Visualize:
         df["20DMA"] = df["Close"].rolling(window=20).mean()
         return df
 
-    def plot_candlestick(self, df):
+    def daily_candlestick(self, df):
         """
         이동평균선이 포함된 캔들스틱 차트를 플롯하고,
         matplotlib의 Figure와 Axes 객체를 반환합니다.
@@ -270,27 +289,54 @@ class Visualize:
         )
         return fig, axes
     
+
     
+def daily_candlestick_save(kiwoom, stock_name, date):
+    """
+    주어진 주식(stock_name)과 날짜(date)에 대해 일봉 데이터를 수집하고,
+    전처리한 후, 데이터베이스에 테이블을 생성하고 데이터를 저장하는 전체
+    워크플로우를 실행하는 함수입니다.
     
+    Parameters:
+        stock_name (str): 예) '삼성전자'
+        date (str): 예) '20250212'
+    """
+    # 데이터 수집: GetData 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
+    get_data = GetData(kiwoom)  # kiwoom 객체는 미리 정의되어 있어야 합니다.
+    df = get_data.daily_candlestick(stock_name, date)
     
+    # 데이터 전처리: Preprocess 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
+    prepro = Preprocess()
+    df = prepro.daily_candlestick(df)
     
+    # 데이터베이스 저장: DBsave 클래스 인스턴스를 생성하여 테이블 생성 및 데이터 삽입
+    data_save = DBsave()
+    data_save.daily_candlestick_create_table(stock_name, date)
+    data_save.daily_candlestick_insert_data(stock_name, date, df)
     
-def load_and_visualize(stock_name, date):
+    # 데이터베이스 연결 종료
+    data_save.close()
+
+
+
+
+
+def daily_candlestick_load(stock_name, date):
     # 데이터 로딩: DBload 클래스의 인스턴스를 생성하여 데이터를 로드
     data_load = DBload()
-    df = data_load.select_from(stock_name, date)
+    df = data_load.daily_candlestick(stock_name, date)
     data_load.close()
     
     # 시각화: Visualize 클래스의 인스턴스를 생성하여 이동평균 추가 및 차트 플롯
     visualization = Visualize()
     df = visualization.add_moving_averages(df)
-    fig, axes = visualization.plot_candlestick(df)
-    
+    fig, axes = visualization.daily_candlestick(df)
+    plt.show()
     return fig, axes
 
 # 사용 예제
 if __name__ == '__main__':
-    fig, axes = load_and_visualize('유일에너테크', '20250211')
+    fig, axes = daily_candlestick_load('샌즈랩','20250101')
     # 플롯 창을 띄워서 확인 (예: plt.show() 사용)
-    import matplotlib.pyplot as plt
+    
     plt.show()
