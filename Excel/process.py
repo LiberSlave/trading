@@ -441,11 +441,11 @@ class Visualize:
             addplot=add_plots,
             returnfig=True,  # Return the figure and axes objects
             figratio=(25, 9),  # Aspect ratio (width:height)
-            figscale=10       # Scale factor for figure size
+            figscale=1      # Scale factor for figure size
         )
 
         # Enable interactive mode and display the plot
-        plt.ion()
+        plt.ioff()
         plt.show()
 
         return fig, axlist
@@ -538,7 +538,11 @@ def minute_candlestick_load(stock_name):
 
 # 사용 예제
 if __name__ == '__main__':
-    fig, axes = daily_candlestick_load('샌즈랩')
+    # fig, axes = daily_candlestick_load('샌즈랩')
     # 플롯 창을 띄워서 확인 (예: plt.show() 사용)
-    
+
+
+
+    fig, axes = minute_candlestick_load('대동기어')
     plt.show()
+
