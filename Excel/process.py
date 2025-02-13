@@ -5,9 +5,22 @@ import time
 from TickerDict import tickers  
 import pymysql
 # Assuming TickerDict.py contains the tickers dictionary
+import matplotlib.dates as mdates
+import xlwings as xw
+import ctypes
 
+###################################키움API 로그인#########################################
+from pykiwoom.kiwoom import *
+# Persistent Interpreter 환경에서는 모듈이 로드될 때 한 번만 로그인하도록 합니다.
+if 'kiwoom' not in globals():
+    kiwoom = Kiwoom()
+    kiwoom.CommConnect(block=True)
+    print("Persistent 로그인 완료")
 
+# if 'asdas' not in globals():
+#     asdas = ctypes.windll.user32.MessageBoxW(0, "안녕하세요, Excel!", "메시지 박스", 0)
 
+###################################키움API 로그인#########################################
 
 class GetData:
     def __init__(self, kiwoom, tickers=tickers):
@@ -398,7 +411,7 @@ class Visualize:
             ]
 
         # mplfinance를 이용해 차트를 플롯하고 Figure와 Axes 반환
-        fig, axes = mpf.plot(
+        fig, axlist = mpf.plot(
             df,
             type="candle",
             style=custom_style,
@@ -409,8 +422,9 @@ class Visualize:
             addplot=add_plots,
             returnfig=True
         )
-        return fig, axes
-    
+
+        
+        return fig, axlist   
 
     def minute_candlestick(self, df):
         """Plot the candlestick chart with moving averages."""
@@ -426,7 +440,7 @@ class Visualize:
             ]
         else:
             add_plots = [
-                mpf.make_addplot(df["Volume"], panel=1, color="gray", type="bar")
+                mpf.make_addplot(df["TradingValue"], panel=1, color="gray", type="bar")
             ]
 
         # Create a Matplotlib Figure and Axes objects using mplfinance
@@ -436,13 +450,17 @@ class Visualize:
             style=custom_style,
             title="Interactive Candlestick Chart",
             ylabel="Price",
-            ylabel_lower="Volume",
+            ylabel_lower="Trading Value",
             volume=False,
             addplot=add_plots,
             returnfig=True,  # Return the figure and axes objects
             figratio=(25, 9),  # Aspect ratio (width:height)
             figscale=1      # Scale factor for figure size
         )
+        ax = axlist[0] 
+        ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(24),interval=1440)) 
+        # ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y%m%d%H%M%S'))
+        # fig.autofmt_xdate()  # 눈금 레이블이 겹치지 않도록 자동 회전
 
         # Enable interactive mode and display the plot
         plt.ioff()
