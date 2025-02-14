@@ -2,35 +2,40 @@ import pandas as pd
 import mplfinance as mpf
 import matplotlib.pyplot as plt
 import time
-from TickerDict import tickers  
 import pymysql
 # Assuming TickerDict.py contains the tickers dictionary
 import matplotlib.dates as mdates
 import xlwings as xw
+import json
 
 
 ###################################키움API 로그인#########################################
 
 # Persistent Interpreter 환경에서는 모듈이 로드될 때 한 번만 로그인하도록 합니다.
 
-from pykiwoom.kiwoom import *
-if 'kiwoom' not in globals():
-    kiwoom = Kiwoom()
-    kiwoom.CommConnect(block=True)
-    print("Persistent 로그인 완료")
+# from pykiwoom.kiwoom import *
+# if 'kiwoom' not in globals():
+#     kiwoom = Kiwoom()
+#     kiwoom.CommConnect(block=True)
+#     print("Persistent 로그인 완료")
 
 # 테스트용 엑셀 메세지 박스.
-# import ctypes
-# if 'asdas' not in globals():
-#     asdas = ctypes.windll.user32.MessageBoxW(0, "안녕하세요, Excel!", "메시지 박스", 0)
+import ctypes
+if 'asdas' not in globals():
+    asdas = ctypes.windll.user32.MessageBoxW(0, "안녕하세요, Excel!", "메시지 박스", 0)
 
-###################################키움API 로그인#########################################
+#########################################################################################
 
 class GetData:
+    
+    with open("ticker.json", "r", encoding="utf-8") as f:
+            tickers = json.load(f)
+            
     def __init__(self, kiwoom, tickers=tickers):
         """
-        kiwoom API 객체와 tickers 딕셔너리를 받아서 초기화합니다.
+        kiwoom API 객체초기화. json에서 딕셔너리를 읽어와 tickers변수에 저장. 
         """
+        
         self.kiwoom = kiwoom
         self.tickers = tickers
 
@@ -483,7 +488,8 @@ def add2(a,b):
     return add1(a,b)
 
 
-def daily_minute_candlestick_save(stock_name, kiwoom = kiwoom,  date='20250211'):
+def daily_minute_candlestick_save(stock_name, kiwoom = None,  date='20250211'):
+    
     #객체생성성
     get_data = GetData(kiwoom)
     data_save = DBsave()
