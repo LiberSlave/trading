@@ -7,16 +7,20 @@ import pymysql
 # Assuming TickerDict.py contains the tickers dictionary
 import matplotlib.dates as mdates
 import xlwings as xw
-import ctypes
+
 
 ###################################키움API 로그인#########################################
-from pykiwoom.kiwoom import *
+
 # Persistent Interpreter 환경에서는 모듈이 로드될 때 한 번만 로그인하도록 합니다.
+
+from pykiwoom.kiwoom import *
 if 'kiwoom' not in globals():
     kiwoom = Kiwoom()
     kiwoom.CommConnect(block=True)
     print("Persistent 로그인 완료")
 
+# 테스트용 엑셀 메세지 박스.
+# import ctypes
 # if 'asdas' not in globals():
 #     asdas = ctypes.windll.user32.MessageBoxW(0, "안녕하세요, Excel!", "메시지 박스", 0)
 
@@ -468,8 +472,38 @@ class Visualize:
 
         return fig, axlist
 
-    
-def daily_candlestick_save(kiwoom, stock_name, date='20250211'):
+
+
+######################################## 함수 #####################################
+
+def add1(a,b):
+    return a+b
+
+def add2(a,b):
+    return add1(a,b)
+
+
+def daily_minute_candlestick_save(stock_name, kiwoom = kiwoom,  date='20250211'):
+    #객체생성성
+    get_data = GetData(kiwoom)
+    data_save = DBsave()
+    prepro_data = Preprocess()
+    # daily_candlestick_save
+    df = get_data.daily_candlestick(stock_name, date)
+    df = prepro_data.daily_candlestick(df)
+    data_save.daily_candlestick_create_table(stock_name)
+    data_save.daily_candlestick_insert_data(stock_name, df)
+
+    # minute_candlestick_save
+    df = get_data.minute_candlestick(stock_name)
+    df = prepro_data.minute_candlestick(df)
+    data_save.minute_candlestick(stock_name,df)
+    #DB 연결 종료
+    data_save.close()
+
+
+
+def daily_candlestick_save(kiwoom , stock_name, date='20250211'):
     """
     주어진 주식(stock_name)과 날짜(date)에 대해 일봉 데이터를 수집하고,
     전처리한 후, 데이터베이스에 테이블을 생성하고 데이터를 저장하는 전체
@@ -484,16 +518,23 @@ def daily_candlestick_save(kiwoom, stock_name, date='20250211'):
     df = get_data.daily_candlestick(stock_name, date)
     
     # 데이터 전처리: Preprocess 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
-    prepro = Preprocess()
-    df = prepro.daily_candlestick(df)
+    prepro_data = Preprocess()
+    df = prepro_data.daily_candlestick(df)
     
     # 데이터베이스 저장: DBsave 클래스 인스턴스를 생성하여 테이블 생성 및 데이터 삽입
     data_save = DBsave()
     data_save.daily_candlestick_create_table(stock_name)
     data_save.daily_candlestick_insert_data(stock_name, df)
-    
-    # 데이터베이스 연결 종료
     data_save.close()
+
+    
+######## save와 close 분리 ##########
+# def daily_candlestick_save_and_close(kiwoom, stock_name, date='20250211'):
+    
+#     data_save = daily_candlestick_save(kiwoom, stock_name, date='20250211')
+#     data_save.close()
+
+
 
 def daily_candlestick_load(stock_name):
     # 데이터 로딩: DBload 클래스의 인스턴스를 생성하여 데이터를 로드
