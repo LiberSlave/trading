@@ -1,0 +1,33 @@
+-- SHOW TABLE STATUS LIKE 'daily_candlestick'
+-- select * from daily_candlestick;
+-- select * from minute_candlestick;
+
+--  CREATE TABLE IF NOT EXISTS daily_candlestick (
+--             datetime DATE,
+--             name VARCHAR(100),
+--             Open INT,
+--             High INT,
+--             Low INT,
+--             Close INT,
+--             Changes INT,
+--             ChangeRate FLOAT,
+--             Volume INT,
+--             TradingValue FLOAT,
+--             Program INT,
+--             ForeignNetBuy INT,
+--             InstitutionNetBuy INT,
+--             IndividualNetBuy INT,
+--             PRIMARY KEY (datetime, name) );daily_candlestick
+
+
+-- CREATE TABLE IF NOT EXISTS minute_candlestick (
+--             datetime DATETIME,
+--             name VARCHAR(100),
+--             Open INT,
+--             High INT,
+--             Low INT,
+--             Close INT,
+--             Volume INT,
+--             TradingValue FLOAT,
+--             PRIMARY KEY (datetime, name)
+--         );

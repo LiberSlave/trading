@@ -100,7 +100,7 @@ class Preprocess:
     def __init__(self):
         pass  # 초기화할 내용이 별도로 없으면 pass
 
-    def daily_candlestick(self, df):
+    def daily_candlestick(self, stock_name, df):
         """
         주식 데이터 DataFrame을 정리하고 전처리합니다.
           - 불필요한 컬럼 제거, 값 치환, 데이터 타입 변환, 컬럼 이름 변경,
@@ -137,6 +137,8 @@ class Preprocess:
             "기관순매수": "InstitutionNetBuy",
             "개인순매수": "IndividualNetBuy"
         })
+        # 두 번째 열(인덱스 1)에 'name' 열을 추가하고, 모든 행의 값을 stock_name으로 설정
+        df.insert(1, 'name', stock_name)
 
         # Transform data: 역순 정렬 후 인덱스 설정
         df = df.iloc[::-1].reset_index(drop=True)
@@ -149,7 +151,7 @@ class Preprocess:
 
         return df
     
-    def minute_candlestick(self, df):
+    def minute_candlestick(self, stock_name, df):
         """Clean and preprocess the stock data for minute data."""
         # 불필요한 열 제거
         columns_to_drop = ["수정주가구분", "수정비율", "대업종구분", "소업종구분", "종목정보", "수정주가이벤트", "전일종가"]
@@ -181,6 +183,9 @@ class Preprocess:
         # 거래대금(TradingValue) 열 추가: Volume * ((Open+High+Low+Close)/4) / 100000000을 소수점 3번째 자리에서 반올림
         df['TradingValue'] = ((df['Volume'] * ((df['Open'] + df['High'] + df['Low'] + df['Close']) / 4)) / 100000000.0).round(3)
 
+        # 두 번째 열(인덱스 1)에 'name' 열을 추가하고, 모든 행의 값을 stock_name으로 설정
+        df.insert(1, 'name', stock_name)
+
         # datetime 열을 인덱스로 설정
         df.set_index("datetime", inplace=True)
 
@@ -208,49 +213,50 @@ class DBsave:
         )
         self.cur = self.conn.cursor()
     
-    def daily_candlestick_create_table(self, stock_name):
-        """
-        주어진 stock_name과 date를 조합하여 테이블을 생성합니다.
-        예: date가 '20250210'이고 stock_name이 '현대힘스'이면 테이블 이름은 '20250210현대힘스'
-        """
-        table_query = f"""
-        CREATE TABLE IF NOT EXISTS day_{stock_name} (
-            datetime DATE,
-            Open INT,
-            High INT,
-            Low INT,
-            Close INT,
-            Changes INT,
-            ChangeRate FLOAT,
-            Volume INT,
-            TradingValue FLOAT,
-            Program INT,
-            ForeignNetBuy INT,
-            InstitutionNetBuy INT,
-            IndividualNetBuy INT,
-            PRIMARY KEY (datetime)
-        );
-        """
-        self.cur.execute(table_query)
-        # 테이블 생성 쿼리 반환(디버깅용)
-        return table_query
+    # def daily_candlestick_create_table(self, stock_name):
+    #     """
+    #     주어진 stock_name과 date를 조합하여 테이블을 생성합니다.
+    #     예: date가 '20250210'이고 stock_name이 '현대힘스'이면 테이블 이름은 '20250210현대힘스'
+    #     """
+    #     table_query = f"""
+    #     CREATE TABLE IF NOT EXISTS day_{stock_name} (
+    #         datetime DATE,
+    #         Open INT,
+    #         High INT,
+    #         Low INT,
+    #         Close INT,
+    #         Changes INT,
+    #         ChangeRate FLOAT,
+    #         Volume INT,
+    #         TradingValue FLOAT,
+    #         Program INT,
+    #         ForeignNetBuy INT,
+    #         InstitutionNetBuy INT,
+    #         IndividualNetBuy INT,
+    #         PRIMARY KEY (datetime)
+    #     );
+    #     """
+    #     self.cur.execute(table_query)
+    #     # 테이블 생성 쿼리 반환(디버깅용)
+    #     return table_query
 
-    def daily_candlestick_insert_data(self, stock_name, df):
+    def daily_candlestick(self, df):
         """
         주어진 DataFrame(df)의 데이터를 지정한 테이블에 삽입합니다.
         테이블 이름은 date와 stock_name을 조합한 것으로 가정합니다.
         DataFrame의 인덱스는 datetime 값이며, 각 컬럼은 테이블 컬럼과 일치해야 합니다.
         """
         insert_query = f"""
-        INSERT IGNORE INTO day_{stock_name} (
-            datetime, Open, High, Low, Close, Changes, ChangeRate, Volume, TradingValue, Program,
+        INSERT IGNORE INTO daily_candlestick (
+            datetime, name, Open, High, Low, Close, Changes, ChangeRate, Volume, TradingValue, Program,
             ForeignNetBuy, InstitutionNetBuy, IndividualNetBuy
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
         """
         # DataFrame의 각 행을 순회하며 데이터를 삽입합니다.
         for index, row in df.iterrows():
             self.cur.execute(insert_query, (
                 index,  # DataFrame의 인덱스가 datetime 값
+                row["name"],  
                 row["Open"],
                 row["High"],
                 row["Low"],
@@ -267,30 +273,18 @@ class DBsave:
         # 모든 삽입 작업 후 commit
         self.conn.commit()
 
-    def minute_candlestick(self, stock_name, df):
-        table_query = f"""
-        CREATE TABLE IF NOT EXISTS minute_{stock_name} (
-            datetime DATETIME,
-            Open INT,
-            High INT,
-            Low INT,
-            Close INT,
-            Volume INT,
-            TradingValue FLOAT,
-            PRIMARY KEY (datetime)
-        );
-        """
-        self.cur.execute(table_query)
+    def minute_candlestick(self, df):
     
         insert_query = f"""
-        INSERT IGNORE INTO minute_{stock_name} (
-            datetime, Open, High, Low, Close, Volume, TradingValue
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s);
+        INSERT IGNORE INTO minute_candlestick (
+            datetime, name, Open, High, Low, Close, Volume, TradingValue
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
         """
     # DataFrame의 각 행을 순회하며 데이터를 삽입합니다.
         for index, row in df.iterrows():
             self.cur.execute(insert_query, (
                 index,  # DataFrame의 인덱스가 datetime 값
+                row['name'],
                 row["Open"],
                 row["High"],
                 row["Low"],
@@ -338,8 +332,8 @@ class DBload:
         예를 들어, stock_name이 '현대힘스'이고 date가 '20250210'이면,
         '20250210현대힘스' 테이블에서 데이터를 읽어옵니다.
         """
-        query = f"SELECT * FROM day_{stock_name}"
-        df = pd.read_sql(query, self.conn)
+        query = f"SELECT * FROM daily_candlestick WHERE name = %s"
+        df = pd.read_sql(query, self.conn, params=(stock_name,))
         
         # datetime 컬럼을 인덱스로 설정하고 datetime 형식으로 변환
         df.set_index("datetime", inplace=True)
@@ -352,8 +346,8 @@ class DBload:
         예를 들어, stock_name이 '현대힘스'이고 date가 '20250210'이면,
         '20250210현대힘스' 테이블에서 데이터를 읽어옵니다.
         """
-        query = f"SELECT * FROM minute_{stock_name}"
-        df = pd.read_sql(query, self.conn)
+        query = f"SELECT * FROM minute_candlestick WHERE name = %s"
+        df = pd.read_sql(query, self.conn, params=(stock_name,))
         
         # datetime 컬럼을 인덱스로 설정하고 datetime 형식으로 변환
         df.set_index("datetime", inplace=True)
@@ -493,23 +487,32 @@ def add2(a,b):
     return add1(a,b)
 
 
-def daily_minute_candlestick_save(stock_name, kiwoom_lab = None,  date='20250211'):
+def create_common_objects(kiwoom_lab=None):
     if kiwoom_lab is None:
-            kiwoom_lab = kiwoom
-    #객체생성성
+        global kiwoom
+        kiwoom_lab = kiwoom
     get_data = GetData(kiwoom_lab)
-    data_save = DBsave()
     prepro_data = Preprocess()
+    data_save = DBsave()
+    return get_data, prepro_data, data_save
+
+
+
+
+def daily_minute_candlestick_save(stock_name, kiwoom_lab = None,  date='20250211'):
+    # 객체생성.
+    get_data, prepro_data, data_save = create_common_objects(kiwoom_lab)
+
     # daily_candlestick_save
     df = get_data.daily_candlestick(stock_name, date)
-    df = prepro_data.daily_candlestick(df)
-    data_save.daily_candlestick_create_table(stock_name)
-    data_save.daily_candlestick_insert_data(stock_name, df)
+    df = prepro_data.daily_candlestick(stock_name, df)
+    data_save.daily_candlestick(df)
 
     # minute_candlestick_save
     df = get_data.minute_candlestick(stock_name)
-    df = prepro_data.minute_candlestick(df)
-    data_save.minute_candlestick(stock_name,df)
+    df = prepro_data.minute_candlestick(stock_name, df)
+    data_save.minute_candlestick(df)
+    
     #DB 연결 종료
     data_save.close()
 
@@ -525,20 +528,13 @@ def daily_candlestick_save(stock_name, kiwoom_lab = None, date='20250211'):
         stock_name (str): 예) '삼성전자'
         date (str): 예) '20250212'
     """
-    if kiwoom_lab is None:
-            kiwoom_lab = kiwoom
-    # 데이터 수집: GetData 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
-    get_data = GetData(kiwoom_lab)  # kiwoom 객체는 미리 정의되어 있어야 합니다.
+    # 객체생성.
+    get_data, prepro_data, data_save = create_common_objects(kiwoom_lab)
+
     df = get_data.daily_candlestick(stock_name, date)
-    
-    # 데이터 전처리: Preprocess 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
-    prepro_data = Preprocess()
-    df = prepro_data.daily_candlestick(df)
-    
-    # 데이터베이스 저장: DBsave 클래스 인스턴스를 생성하여 테이블 생성 및 데이터 삽입
-    data_save = DBsave()
-    data_save.daily_candlestick_create_table(stock_name)
-    data_save.daily_candlestick_insert_data(stock_name, df)
+    df = prepro_data.daily_candlestick(stock_name, df)
+    data_save.daily_candlestick(df)
+
     data_save.close()
 
     
@@ -549,6 +545,21 @@ def daily_candlestick_save(stock_name, kiwoom_lab = None, date='20250211'):
 #     data_save.close()
 
 
+def minute_candlestick_save(stock_name, kiwoom_lab = None):
+    
+    #객체생성성
+    get_data, prepro_data, data_save = create_common_objects(kiwoom_lab)
+
+    df = get_data.minute_candlestick(stock_name)
+    df = prepro_data.minute_candlestick(stock_name, df)
+    data_save.minute_candlestick(df)
+    
+    # 데이터베이스 연결 종료
+    data_save.close()
+
+    return df #(df확인해보고 싶으면 주석 해제.)
+
+################################# load ############################################
 
 def daily_candlestick_load(stock_name):
     # 데이터 로딩: DBload 클래스의 인스턴스를 생성하여 데이터를 로드
@@ -562,28 +573,6 @@ def daily_candlestick_load(stock_name):
     fig, axes = visualization.daily_candlestick(df)
     plt.show()
     return fig, axes
-
-
-def minute_candlestick_save(stock_name, kiwoom_lab = None):
-    if kiwoom_lab is None:
-            kiwoom_lab = kiwoom
-    
-    # 데이터 수집: GetData 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
-    get_data = GetData(kiwoom_lab)  # kiwoom 객체는 미리 정의되어 있어야 합니다.
-    df = get_data.minute_candlestick(stock_name)
-
-    # 데이터 전처리: Preprocess 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
-    prepro_data = Preprocess()
-    df = prepro_data.minute_candlestick(df)
-
-    # 데이터베이스 저장: DBsave 클래스 인스턴스를 생성하여 테이블 생성 및 데이터 삽입
-    data_save = DBsave()
-    data_save.minute_candlestick(stock_name,df)
-    
-    # 데이터베이스 연결 종료
-    data_save.close()
-
-    return df #(df확인해보고 싶으면 주석 해제.)
 
 
 def minute_candlestick_load(stock_name):
