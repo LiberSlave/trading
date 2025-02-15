@@ -7,36 +7,41 @@ import pymysql
 import matplotlib.dates as mdates
 import xlwings as xw
 import json
-
+from pykiwoom.kiwoom import *
 
 ###################################키움API 로그인#########################################
 
 # Persistent Interpreter 환경에서는 모듈이 로드될 때 한 번만 로그인하도록 합니다.
-
-# from pykiwoom.kiwoom import *
-# if 'kiwoom' not in globals():
-#     kiwoom = Kiwoom()
-#     kiwoom.CommConnect(block=True)
-#     print("Persistent 로그인 완료")
+def login_kiwoom():
+    global kiwoom
+    if 'kiwoom' not in globals():
+        kiwoom = Kiwoom()
+        kiwoom.CommConnect(block=True)
+        print("Persistent 로그인 완료")
 
 # 테스트용 엑셀 메세지 박스.
-import ctypes
-if 'asdas' not in globals():
-    asdas = ctypes.windll.user32.MessageBoxW(0, "안녕하세요, Excel!", "메시지 박스", 0)
+
+def test_messagebox():
+    import ctypes
+    global asdas
+    if 'asdas' not in globals():
+        asdas = ctypes.windll.user32.MessageBoxW(0, "안녕하세요, eeeExcel!", "메시지 박스", 0)
 
 #########################################################################################
 
 class GetData:
     
-    with open("ticker.json", "r", encoding="utf-8") as f:
+    with open("C:/workspace/systemtrading/excel/ticker.json", "r", encoding="utf-8") as f:
             tickers = json.load(f)
             
-    def __init__(self, kiwoom, tickers=tickers):
+    def __init__(self, kiwoom_lab = None, tickers=tickers):
         """
         kiwoom API 객체초기화. json에서 딕셔너리를 읽어와 tickers변수에 저장. 
         """
-        
-        self.kiwoom = kiwoom
+        if kiwoom_lab is None:
+            kiwoom_lab = kiwoom
+
+        self.kiwoom = kiwoom_lab
         self.tickers = tickers
 
     def daily_candlestick(self, stock_name, date='20250211', max_requests=2):
@@ -488,10 +493,11 @@ def add2(a,b):
     return add1(a,b)
 
 
-def daily_minute_candlestick_save(stock_name, kiwoom = None,  date='20250211'):
-    
+def daily_minute_candlestick_save(stock_name, kiwoom_lab = None,  date='20250211'):
+    if kiwoom_lab is None:
+            kiwoom_lab = kiwoom
     #객체생성성
-    get_data = GetData(kiwoom)
+    get_data = GetData(kiwoom_lab)
     data_save = DBsave()
     prepro_data = Preprocess()
     # daily_candlestick_save
@@ -509,7 +515,7 @@ def daily_minute_candlestick_save(stock_name, kiwoom = None,  date='20250211'):
 
 
 
-def daily_candlestick_save(kiwoom , stock_name, date='20250211'):
+def daily_candlestick_save(stock_name, kiwoom_lab = None, date='20250211'):
     """
     주어진 주식(stock_name)과 날짜(date)에 대해 일봉 데이터를 수집하고,
     전처리한 후, 데이터베이스에 테이블을 생성하고 데이터를 저장하는 전체
@@ -519,8 +525,10 @@ def daily_candlestick_save(kiwoom , stock_name, date='20250211'):
         stock_name (str): 예) '삼성전자'
         date (str): 예) '20250212'
     """
+    if kiwoom_lab is None:
+            kiwoom_lab = kiwoom
     # 데이터 수집: GetData 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
-    get_data = GetData(kiwoom)  # kiwoom 객체는 미리 정의되어 있어야 합니다.
+    get_data = GetData(kiwoom_lab)  # kiwoom 객체는 미리 정의되어 있어야 합니다.
     df = get_data.daily_candlestick(stock_name, date)
     
     # 데이터 전처리: Preprocess 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
@@ -556,10 +564,12 @@ def daily_candlestick_load(stock_name):
     return fig, axes
 
 
-def minute_candlestick_save(kiwoom, stock_name):
+def minute_candlestick_save(stock_name, kiwoom_lab = None):
+    if kiwoom_lab is None:
+            kiwoom_lab = kiwoom
     
     # 데이터 수집: GetData 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
-    get_data = GetData(kiwoom)  # kiwoom 객체는 미리 정의되어 있어야 합니다.
+    get_data = GetData(kiwoom_lab)  # kiwoom 객체는 미리 정의되어 있어야 합니다.
     df = get_data.minute_candlestick(stock_name)
 
     # 데이터 전처리: Preprocess 클래스 인스턴스를 생성하고 daily_candlestick 메서드 호출
@@ -601,13 +611,13 @@ def minute_candlestick_load(stock_name):
 
 
 
-# 사용 예제
-if __name__ == '__main__':
-    # fig, axes = daily_candlestick_load('샌즈랩')
-    # 플롯 창을 띄워서 확인 (예: plt.show() 사용)
+# # 사용 예제
+# if __name__ == '__main__':
+#     # fig, axes = daily_candlestick_load('샌즈랩')
+#     # 플롯 창을 띄워서 확인 (예: plt.show() 사용)
 
 
 
-    fig, axes = minute_candlestick_load('대동기어')
-    plt.show()
+#     fig, axes = minute_candlestick_load('대동기어')
+#     plt.show()
 
