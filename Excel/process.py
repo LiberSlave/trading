@@ -390,7 +390,7 @@ class Visualize:
         df["20DMA"] = df["Close"].rolling(window=20).mean()
         return df
 
-    def daily_candlestick(self, df):
+    def daily_candlestick(self, stock_name, df):
         """
         이동평균선이 포함된 캔들스틱 차트를 플롯하고,
         matplotlib의 Figure와 Axes 객체를 반환합니다.
@@ -404,7 +404,7 @@ class Visualize:
         """
         # 사용자 정의 마켓 컬러와 스타일 설정
         custom_colors = mpf.make_marketcolors(up="red", down="blue", wick="black", edge="black")
-        custom_style = mpf.make_mpf_style(marketcolors=custom_colors, gridcolor="gray", gridstyle="--")
+        custom_style = mpf.make_mpf_style(marketcolors=custom_colors, gridcolor="gray", gridstyle="--",rc={'font.family': 'Malgun Gothic'})
 
         # DataFrame에 이동평균 컬럼이 있는지 확인하고, addplot 목록 구성
         if "10DMA" in df.columns and "20DMA" in df.columns:
@@ -418,26 +418,29 @@ class Visualize:
                 mpf.make_addplot(df["TradingValue"], panel=1, color="gray", type="bar")
             ]
 
+
+
+        
+
         # mplfinance를 이용해 차트를 플롯하고 Figure와 Axes 반환
         fig, axlist = mpf.plot(
             df,
             type="candle",
             style=custom_style,
-            title="Stock Chart",
             ylabel="Price",
             ylabel_lower="Trading Value",
             volume=False,
             addplot=add_plots,
             returnfig=True
         )
-
+        fig.suptitle(f"{stock_name}", fontsize=16)
         
         return fig, axlist   
 
-    def minute_candlestick(self, df):
+    def minute_candlestick(self, stock_name, df):
         """Plot the candlestick chart with moving averages."""
         custom_colors = mpf.make_marketcolors(up="red", down="blue", wick="black", edge="black")
-        custom_style = mpf.make_mpf_style(marketcolors=custom_colors, gridcolor="gray", gridstyle="--")
+        custom_style = mpf.make_mpf_style(marketcolors=custom_colors, gridcolor="gray", gridstyle="--", rc={'font.family': 'Malgun Gothic'})
 
         # Check if the DataFrame contains 10DMA and 20DMA columns
         if "10DMA" in df.columns and "20DMA" in df.columns:
@@ -465,14 +468,16 @@ class Visualize:
             figratio=(25, 9),  # Aspect ratio (width:height)
             figscale=1      # Scale factor for figure size
         )
+        fig.suptitle(f"{stock_name}", fontsize=16)
+
         ax = axlist[0] 
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(24),interval=1440)) 
         # ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y%m%d%H%M%S'))
         # fig.autofmt_xdate()  # 눈금 레이블이 겹치지 않도록 자동 회전
 
         # Enable interactive mode and display the plot
-        plt.ioff()
-        plt.show()
+        # plt.ioff()
+        # plt.show()
 
         return fig, axlist
 
@@ -570,7 +575,7 @@ def daily_candlestick_load(stock_name):
     # 시각화: Visualize 클래스의 인스턴스를 생성하여 이동평균 추가 및 차트 플롯
     visualization = Visualize()
     df = visualization.add_moving_averages(df)
-    fig, axes = visualization.daily_candlestick(df)
+    fig, axes = visualization.daily_candlestick(stock_name, df)
     plt.show()
     return fig, axes
 
@@ -583,26 +588,124 @@ def minute_candlestick_load(stock_name):
     
     # 시각화: Visualize 클래스의 인스턴스를 생성하여 이동평균 추가 및 차트 플롯
     data_visualization = Visualize()
-    fig, axes = data_visualization.minute_candlestick(df)
+    fig, axes = data_visualization.minute_candlestick(stock_name, df)
     plt.show()
     return fig, axes
 
 
+def combined_candlestick(stock_name):
+
+    data_load = DBload()
+    daily_df = data_load.daily_candlestick(stock_name)
+    minute_df = data_load.minute_candlestick(stock_name)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+
+    # 첫 번째 서브플롯에 daily_df의 차트 그리기, title 없이 그리기
+    mpf.plot(daily_df,
+            type="candle",
+            ax=ax1,
+            style="charles",
+            returnfig=False)
+
+    # 두 번째 서브플롯에 minute_df의 차트 그리기, title 없이 그리기
+    mpf.plot(minute_df,
+            type="candle",
+            ax=ax2,
+            style="charles",
+            returnfig=False)
+
+    
+
+    fig.suptitle("Combined Candlestick Charts", fontsize=16)
+    fig.autofmt_xdate()
+        
+
+    #plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.subplots_adjust(top=0.90, bottom=0.10, left=0.05, right=0.95)
+    plt.show()
 
 
 
 
-
-
-
+def combined_candlestick2(stock_name):
+    import matplotlib.gridspec as gridspec
+    # 데이터 로딩 (DBload 클래스 이용)
+    data_load = DBload()
+    daily_df = data_load.daily_candlestick(stock_name)
+    minute_df = data_load.minute_candlestick(stock_name)
+    data_load.close()
+    
+    # 하나의 Figure에 4개의 Axes를 생성 (4행 1열)
+    fig = plt.figure(figsize=(14, 10))
+    # 높이 비율: 메인 차트는 3, lower panel은 1의 비율로 설정 (총 4행)
+    gs = gridspec.GridSpec(4, 1, height_ratios=[3, 1, 3, 1], hspace=0.05)
+    
+    # 일봉 차트: 메인 패널과 하단 패널 생성
+    ax_daily = fig.add_subplot(gs[0])
+    ax_daily_lower = fig.add_subplot(gs[1], sharex=ax_daily)
+    
+    # 분봉 차트: 메인 패널과 하단 패널 생성
+    ax_minute = fig.add_subplot(gs[2])
+    ax_minute_lower = fig.add_subplot(gs[3], sharex=ax_minute)
+    
+    # 일봉 차트 메인 패널에 캔들스틱 차트 그리기 (볼륨은 제외)
+    mpf.plot(daily_df,
+             type="candle",
+             ax=ax_daily,
+             style="charles",
+             returnfig=False)
+    
+    # 일봉 lower panel: 거래량(또는 TradingValue) 데이터를 막대그래프로 그리기
+    if "Volume" in daily_df.columns:
+        ax_daily_lower.bar(daily_df.index, daily_df["Volume"], color="gray")
+        ax_daily_lower.set_ylabel("Volume")
+    elif "TradingValue" in daily_df.columns:
+        ax_daily_lower.bar(daily_df.index, daily_df["TradingValue"], color="gray")
+        ax_daily_lower.set_ylabel("Trading Value")
+    else:
+        ax_daily_lower.set_ylabel("Lower Panel")
+    
+    # 분봉 차트 메인 패널에 캔들스틱 차트 그리기 (추가 옵션 사용 예시)
+    # 사용자 정의 스타일 적용
+    custom_colors = mpf.make_marketcolors(up="red", down="blue", wick="black", edge="black")
+    custom_style = mpf.make_mpf_style(marketcolors=custom_colors, gridcolor="gray", gridstyle="--")
+    mpf.plot(minute_df,
+             type="candle",
+             ax=ax_minute,
+             style=custom_style,
+             returnfig=False)
+    
+    # 분봉 lower panel: 거래량(또는 TradingValue) 데이터를 막대그래프로 그리기
+    if "Volume" in minute_df.columns:
+        ax_minute_lower.bar(minute_df.index, minute_df["Volume"], color="gray")
+        ax_minute_lower.set_ylabel("Volume")
+    elif "TradingValue" in minute_df.columns:
+        ax_minute_lower.bar(minute_df.index, minute_df["TradingValue"], color="gray")
+        ax_minute_lower.set_ylabel("Trading Value")
+    else:
+        ax_minute_lower.set_ylabel("Lower Panel")
+    
+    # 전체 Figure 제목 및 x축 레이블 자동 회전
+    fig.suptitle("Combined Candlestick Charts", fontsize=16)
+    fig.autofmt_xdate()
+    
+    plt.show()
 
 
 
 
 
 # # 사용 예제
-# if __name__ == '__main__':
-#     # fig, axes = daily_candlestick_load('샌즈랩')
+if __name__ == '__main__':
+    # fig1, ax1 = daily_candlestick_load('네오셈')
+    # fig2, ax2 = minute_candlestick_load('네오셈')
+    # plt.show()
+
+    # fig,axes = combined_candlestick('네오셈')
+
+    fig, axes = combined_candlestick('네오셈')
+    plt.show()
 #     # 플롯 창을 띄워서 확인 (예: plt.show() 사용)
 
 
