@@ -483,7 +483,7 @@ class Visualize:
 
 
 
-######################################## 함수 #####################################
+######################################## 함수 ########################################################
 
 def add1(a,b):
     return a+b
@@ -501,27 +501,82 @@ def create_common_objects(kiwoom_lab=None):
     data_save = DBsave()
     return get_data, prepro_data, data_save
 
+def update_tickers(kiwoom_lab = None, json_path = "C:/workspace/systemtrading/excel/ticker.json"):
+    if kiwoom_lab is None:
+        global kiwoom
+        kiwoom_lab = kiwoom
+    """
+    Kiwoom API를 사용하여 KOSPI와 KOSDAQ의 종목 코드를 ticker.json 파일에 업데이트하고,
+    새로 추가된 종목들을 리스트로 반환합니다.
+    
+    Parameters:
+        kiwoom: Kiwoom API 객체
+        json_path (str): ticker.json 파일의 경로 (기본값: "ticker.json")
+    
+    Returns:
+        new_stocks (list): 새로 추가된 종목들의 리스트. 예) ["동화약품: 000020", ...] 
+                           추가된 종목이 없으면 ["추가된 종목이 없습니다"] 반환.
+    """
+    # JSON 파일에서 기존 tickers 딕셔너리 로드
+    with open(json_path, "r", encoding="utf-8") as f:
+        tickers = json.load(f)
+    
+    # KOSPI (시장코드 "0")와 KOSDAQ (시장코드 "10")의 종목 코드 목록을 가져옴
+    kospi_tickers = kiwoom_lab.GetCodeListByMarket("0")  # KOSPI
+    kosdaq_tickers = kiwoom_lab.GetCodeListByMarket("10")  # KOSDAQ
+    stock_codes = kospi_tickers + kosdaq_tickers
 
+    new_stocks = []  # 새로 추가된 종목들을 저장할 리스트
 
+    # 새로운 종목을 tickers 딕셔너리에 추가
+    for code in stock_codes:
+        name = kiwoom_lab.GetMasterCodeName(code)
+        if name not in tickers:
+            tickers[name] = code
+            new_stocks.append(f"{name}: {code}")
+            # 기존에는 print(f"추가됨: {name}: {code}")로 출력했으나,
+            # 앞으로 Excel에서 debug.print로 확인할 수 있도록 반환값으로 전달합니다.
 
-def daily_minute_candlestick_save(stock_name, kiwoom_lab = None,  date='20250211'):
-    # 객체생성.
+    # 업데이트된 tickers 딕셔너리를 JSON 파일에 다시 저장
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(tickers, f, indent=4, ensure_ascii=False)
+    
+    if not new_stocks:
+        new_stocks = ["추가된 종목이 없습니다"]
+    
+    return new_stocks
+
+########################################################################################################
+
+def several_candlestick_save(stock_name_list, kiwoom_lab = None, date='20250211'):
     get_data, prepro_data, data_save = create_common_objects(kiwoom_lab)
 
-    # daily_candlestick_save
-    df = get_data.daily_candlestick(stock_name, date)
-    df = prepro_data.daily_candlestick(stock_name, df)
-    data_save.daily_candlestick(df)
+    for stock_name in stock_name_list:
+        df = get_data.daily_candlestick(stock_name, date)
+        df = prepro_data.daily_candlestick(stock_name, df)
+        data_save.daily_candlestick(df)
 
-    # minute_candlestick_save
-    df = get_data.minute_candlestick(stock_name)
-    df = prepro_data.minute_candlestick(stock_name, df)
-    data_save.minute_candlestick(df)
+        df = get_data.minute_candlestick(stock_name)
+        df = prepro_data.minute_candlestick(stock_name, df)
+        data_save.minute_candlestick(df)
     
-    #DB 연결 종료
+    # 데이터베이스 연결 종료
     data_save.close()
 
+        
+    
+def several_daily_candlestick_save(stock_name_list, kiwoom_lab = None, date='20250211'):
 
+    get_data, prepro_data, data_save = create_common_objects(kiwoom_lab)
+
+    for stock_name in stock_name_list:
+        df = get_data.daily_candlestick(stock_name, date)
+        df = prepro_data.daily_candlestick(stock_name, df)
+        data_save.daily_candlestick(df)
+        
+        
+    data_save.close()   
+    
 
 def daily_candlestick_save(stock_name, kiwoom_lab = None, date='20250211'):
     """
@@ -548,6 +603,15 @@ def daily_candlestick_save(stock_name, kiwoom_lab = None, date='20250211'):
     
 #     data_save = daily_candlestick_save(kiwoom, stock_name, date='20250211')
 #     data_save.close()
+def several_minute_candlestick_save(stock_name_list, kiwoom_lab = None):
+    get_data, prepro_data, data_save = create_common_objects(kiwoom_lab)
+
+    for stock_name in stock_name_list:
+        df = get_data.minute_candlestick(stock_name)
+        df = prepro_data.minute_candlestick(stock_name, df)
+        data_save.minute_candlestick(df)
+        
+    data_save.close()   
 
 
 def minute_candlestick_save(stock_name, kiwoom_lab = None):
