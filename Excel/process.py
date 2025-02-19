@@ -559,9 +559,11 @@ def several_candlestick_save(stock_name_list, kiwoom_lab = None, date='20250211'
         df = get_data.minute_candlestick(stock_name)
         df = prepro_data.minute_candlestick(stock_name, df)
         data_save.minute_candlestick(df)
+        print(f"{stock_name} 저장완료")
     
     # 데이터베이스 연결 종료
     data_save.close()
+    print('모두저장완료')
 
         
     
