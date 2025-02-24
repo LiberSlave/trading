@@ -8,6 +8,8 @@ import matplotlib.dates as mdates
 import xlwings as xw
 import json
 from pykiwoom.kiwoom import *
+import numpy as np
+from sqlalchemy import create_engine
 
 ###################################키움API 로그인#########################################
 
@@ -34,7 +36,7 @@ class GetData:
     with open("C:/workspace/systemtrading/excel/ticker.json", "r", encoding="utf-8") as f:
             tickers = json.load(f)
             
-    def __init__(self, kiwoom_lab = None, tickers=tickers):
+    def __init__(self, stock_name, kiwoom_lab=None, date=None, tickers=tickers):
         """
         kiwoom API 객체초기화. json에서 딕셔너리를 읽어와 tickers변수에 저장. 
         """
@@ -43,102 +45,219 @@ class GetData:
 
         self.kiwoom = kiwoom_lab
         self.tickers = tickers
+        self.stock_name = stock_name
+        self.code = self.tickers.get(self.stock_name)
+        self.date = date
 
-    def daily_candlestick(self, stock_name, date='20250211', max_requests=2):
-        """
-        주어진 주식(stock_name)과 날짜(date)에 대해, kiwoom API를 통해
-        주식 데이터를 여러 번 요청하여 하나의 DataFrame으로 결합하여 반환합니다.
-        """
-        code = self.tickers.get(stock_name)
-        if not code:
-            raise ValueError(f"Stock name '{stock_name}' not found in tickers.")
-        
-        dfs = []
-        for request_num in range(max_requests):
-            next_flag = 1 if request_num == 0 else 2
-            df = self.kiwoom.block_request(
-                "opt10086",
-                종목코드=code,
-                기준일자=date,
-                표시구분=1,
-                output="일별주가요청",
-                next=next_flag
-            )
-            dfs.append(df)
-            time.sleep(1)
-        return pd.concat(dfs, ignore_index=True)
-    
-    def minute_candlestick(self, stock_name, tick=1, max_requests=1):
-        """
-        주어진 주식 이름(stock_name)과 틱 범위(tick)에 대해 데이터를 수집합니다.
-        API를 통해 max_requests 만큼 데이터를 요청한 후, DataFrame으로 결합하여 반환합니다.
-        """
-        # self.tickers에서 stock_name에 해당하는 코드를 가져옴
-        code = self.tickers.get(stock_name, None)
-        if not code:
-            raise ValueError(f"Stock name '{stock_name}' not found in tickers.")
 
-        dfs = []
-        for request_num in range(max_requests):
-            next_flag = 1 if request_num == 0 else 2
-            df = self.kiwoom.block_request(
-                "opt10080",
-                종목코드=code,
-                틱범위=tick,
-                표시구분=1,
-                output="으아아아",
-                next=next_flag
+    def tr_request(self, opt):
+        df = self.kiwoom.block_request(
+                opt,
+                종목코드=self.code,
+                기준일자=None,
+                수정주가구분=1,
+                output=None,
+                next=0
             )
-            dfs.append(df)
-            time.sleep(1)
-        # 여러 요청으로 받은 DataFrame들을 하나로 결합
-        df = pd.concat(dfs, ignore_index=True)
         return df
+    
+    def fetch_minute_candlestick(self):
+        
+        if not self.code:
+            raise ValueError(f"Stock name '{self.stock_name}' not found in tickers.")
+
+        df = self.kiwoom.block_request(
+                "opt10080",
+                종목코드=self.code,
+                수정주가구분=1,
+                output=None,
+                next=0,
+                틱범위=1
+            )
+        return df
+    
+    def fetch_daily_candlestick(self):
+        # tickers.json에서 종목명을 찾지 못했을때 오류코드.
+        if not self.code:
+            raise ValueError(f"Stock name '{self.stock_name}' not found in tickers.")
+        
+        df = self.tr_request("opt10081")
+        return df
+    
+
+    def process_minute_candlestick(self, df):
+        """Clean and preprocess the stock data for minute data."""
+
+        # 빈 문자열을 NaN으로 변환한 후, 모든 값이 NaN인 열 삭제
+        df = df.replace("", np.nan).dropna(axis=1, how="all")
+
+        # 1. 체결시간을 datetime으로 변환
+        df['체결시간'] = pd.to_datetime(df['체결시간'], format='%Y%m%d%H%M%S')
+        # 체결시간 열을 인덱스로 설정
+        df.set_index("체결시간", inplace=True)
+
+        # 모든 열을 정수형으로 변환
+        df = df.astype(int)
+        # 모든 열에 절댓값 적용
+        df = df.abs()
+
+        # 거래대금(TradingValue) 열 추가: Volume * ((Open+High+Low+Close)/4) / 100000000을 소수점 3번째 자리에서 반올림
+        df['거래대금'] = ((df['거래량'] * ((df['시가'] + df['고가'] + df['저가'] + df['현재가']) / 4)) / 100000000.0).round(3)
+
+        # 첫 번째 열(인덱스 0)에 '종목명' 열을 추가하고, 모든 행의 값을 stock_name으로 설정
+        df.insert(0, '종목명', self.stock_name)
+
+        return df
+    
+
+    def process_daily_candlestick(self, df):
+
+        df = df.iloc[:250]  # 처음 250개 행만 남김
+
+
+        del df['종목코드']
+        # 빈 문자열을 NaN으로 변환한 후, 하나라도 NaN이 있는 열 삭제
+        df = df.replace("", np.nan).dropna(axis=1, how="any")
+
+        # 1. 체결시간을 datetime으로 변환
+        df['일자'] = pd.to_datetime(df['일자'], format='%Y%m%d')
+        # 체결시간 열을 인덱스로 설정
+        df.set_index("일자", inplace=True)
+
+        # 모든 열을 정수형으로 변환
+        df = df.astype(int)
+        # 모든 열에 절댓값 적용
+        df = df.abs()
+
+        # 첫 번째 열(인덱스 0)에 '종목명' 열을 추가하고, 모든 행의 값을 stock_name으로 설정
+        df.insert(0, '종목명', self.stock_name)
+
+        return df
+    
+
+    def save_data(self, df, table_name):
+        """
+        DataFrame(df)을 MySQL 데이터베이스의 naver_news 테이블에 저장합니다.
+        
+        Parameters:
+            df (DataFrame): 저장할 데이터프레임
+        """
+        username = 'root'
+        password = '219423'
+        host = 'localhost'
+        port = '3306'
+        database = 'trading'
+
+        # SQLAlchemy 엔진 생성 (mysql+pymysql 사용)
+        engine = create_engine(f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}")
+        
+        # DataFrame을 naver_news 테이블에 저장 (중복 키 무시)
+        try:
+            df.to_sql(table_name, con=engine, if_exists='append', index=True, method=self.insert_ignore)
+            # print('DB에 저장되었습니다다')
+        except Exception as e:
+            print(f"Error: {e}")
+
+    def insert_ignore(self, table, conn, keys, data_iter):
+        from sqlalchemy.dialects.mysql import insert
+        # data_iter는 DataFrame의 각 행 데이터가 튜플로 들어옵니다.
+        data = [dict(zip(keys, row)) for row in data_iter]
+    
+        # SQLAlchemy insert 객체를 만들고, MySQL 전용 prefix "IGNORE"를 추가합니다.
+        stmt = insert(table.table).prefix_with("IGNORE")
+        
+        conn.execute(stmt, data)
+
+    
+    
+
+
+
+
+def create_instance(stock_name, kiwoom_lab=None):
+    if kiwoom_lab is None:
+        global kiwoom
+        kiwoom_lab = kiwoom
+    get_data = GetData(stock_name, kiwoom_lab)
+    return get_data
+    
+def minute_save(stock_name, kiwoom_lab=None):
+    get_data = create_instance(stock_name, kiwoom_lab)
+    df = get_data.fetch_minute_candlestick()
+    df = get_data.process_minute_candlestick(df)
+    get_data.save_data(df,'minute_candlestick')
+    return df
+
+def daily_save(stock_name, kiwoom_lab=None):
+    get_data = create_instance(stock_name, kiwoom_lab)
+    df = get_data.fetch_daily_candlestick()
+    df = get_data.process_daily_candlestick(df)
+    get_data.save_data(df,'daily_candlestick')
+    return df
+
+def several_minute_daily_save(stock_name_list):
+    for stock_name in stock_name_list:
+        minute_save(stock_name)
+        daily_save(stock_name)
+        print(f'{stock_name}이 저장되었습니다다')
+        time.sleep(1)  # 1초 대기
+
+
+#############################################
+
 
 
 class Preprocess:
     def __init__(self):
         pass  # 초기화할 내용이 별도로 없으면 pass
 
+    def minute_candlestick(self, stock_name, df):
+        """Clean and preprocess the stock data for minute data."""
+
+        # 빈 문자열을 NaN으로 변환한 후, 모든 값이 NaN인 열 삭제
+        df = df.replace("", np.nan).dropna(axis=1, how="all")
+
+        # 1. 체결시간을 datetime으로 변환
+        df['체결시간'] = pd.to_datetime(df['체결시간'], format='%Y%m%d%H%M%S')
+        # 체결시간 열을 인덱스로 설정
+        df.set_index("체결시간", inplace=True)
+
+        # 모든 열을 정수형으로 변환
+        df = df.astype(int)
+        # 모든 열에 절댓값 적용
+        df = df.abs()
+
+        # 거래대금(TradingValue) 열 추가: Volume * ((Open+High+Low+Close)/4) / 100000000을 소수점 3번째 자리에서 반올림
+        df['거래대금'] = ((df['거래량'] * ((df['시가'] + df['고가'] + df['저가'] + df['현재가']) / 4)) / 100000000.0).round(3)
+
+        # 두 번째 열(인덱스 1)에 '종목명' 열을 추가하고, 모든 행의 값을 stock_name으로 설정
+        df.insert(0, '종목명', stock_name)
+
+        
+
+        # 필요한 경우 추가 데이터 변환 작업 수행 (예: 행 순서 뒤집기)
+        # df = df.iloc[::-1].reset_index(drop=True)
+
+        return df
+
+
     def daily_candlestick(self, stock_name, df):
-        """
-        주식 데이터 DataFrame을 정리하고 전처리합니다.
-          - 불필요한 컬럼 제거, 값 치환, 데이터 타입 변환, 컬럼 이름 변경,
-          - 행 순서 뒤집기, 인덱스 설정, 절대값 변환 등 수행.
-        """
-        # Drop unnecessary columns
-        columns_to_drop = ["신용비", "개인", "기관", "외인수량", "외국계", "외인비", "외인보유", "외인비중", "신용잔고율"]
-        df = df.drop(columns=columns_to_drop, errors='ignore')
 
-        # Replace '--' with '-'
-        columns_to_replace = ["프로그램", "외인순매수", "기관순매수", "개인순매수"]
-        df[columns_to_replace] = df[columns_to_replace].replace("--", "-", regex=True)
+        # 빈 문자열을 NaN으로 변환한 후, 하나라도 NaN이 있는 열 삭제
+        df = df.replace("", np.nan).dropna(axis=1, how="any")
 
-        # Convert data types
-        df["날짜"] = pd.to_datetime(df["날짜"], format="%Y%m%d")
-        df["등락률"] = df["등락률"].astype(float)
-        columns_to_convert = df.columns.difference(["날짜", "등락률"])
-        df[columns_to_convert] = df[columns_to_convert].astype(int, errors='ignore')
-        df["금액(백만)"] = df["금액(백만)"] / 100
+        # 1. 체결시간을 datetime으로 변환
+        df['일자'] = pd.to_datetime(df['일자'], format='%Y%m%d')
+        # 체결시간 열을 인덱스로 설정
+        df.set_index("일자", inplace=True)
 
-        # Rename columns
-        df = df.rename(columns={
-            "날짜": "datetime",
-            "시가": "Open",
-            "고가": "High",
-            "저가": "Low",
-            "종가": "Close",
-            "거래량": "Volume",
-            "전일비": "Changes",
-            "등락률": "ChangeRate",
-            "금액(백만)": "TradingValue",
-            "프로그램": "Program",
-            "외인순매수": "ForeignNetBuy",
-            "기관순매수": "InstitutionNetBuy",
-            "개인순매수": "IndividualNetBuy"
-        })
+        # 모든 열을 정수형으로 변환
+        df = df.astype(int)
+        # 모든 열에 절댓값 적용
+        df = df.abs()
+
         # 두 번째 열(인덱스 1)에 'name' 열을 추가하고, 모든 행의 값을 stock_name으로 설정
-        df.insert(1, 'name', stock_name)
+        df.insert(0, 'name', stock_name)
 
         # Transform data: 역순 정렬 후 인덱스 설정
         df = df.iloc[::-1].reset_index(drop=True)
@@ -151,53 +270,38 @@ class Preprocess:
 
         return df
     
-    def minute_candlestick(self, stock_name, df):
-        """Clean and preprocess the stock data for minute data."""
-        # 불필요한 열 제거
-        columns_to_drop = ["수정주가구분", "수정비율", "대업종구분", "소업종구분", "종목정보", "수정주가이벤트", "전일종가"]
-        df = df.drop(columns=columns_to_drop, errors='ignore')
 
-        # 상위 420행만 남김 (즉, 420행 이후는 삭제)
-        df = df.iloc[:420]
+    def save_data(self, df, table_name):
+        """
+        DataFrame(df)을 MySQL 데이터베이스의 naver_news 테이블에 저장합니다.
+        
+        Parameters:
+            df (DataFrame): 저장할 데이터프레임
+        """
+        username = 'root'
+        password = '219423'
+        host = 'localhost'
+        port = '3306'
+        database = 'trading'
 
-        # 데이터 타입 변환: "체결시간" 열을 datetime으로 변환
-        df["체결시간"] = pd.to_datetime(df["체결시간"], format="%Y%m%d%H%M%S")
+        # SQLAlchemy 엔진 생성 (mysql+pymysql 사용)
+        engine = create_engine(f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}")
+        
+        # DataFrame을 naver_news 테이블에 저장 (중복 키 무시)
+        df.to_sql(table_name, con=engine, if_exists='append', index=False, method= self.insert_ignore)
+        
+        print("DataFrame이 MySQL에 저장되었습니다.")
 
-        # "체결시간"을 제외한 나머지 열은 정수형으로 변환
-        columns_to_convert = df.columns.difference(["체결시간"])
-        df[columns_to_convert] = df[columns_to_convert].astype(int, errors='ignore')
+    def insert_ignore(self, table, conn, keys, data_iter):
+        from sqlalchemy.dialects.mysql import insert
+        # data_iter는 DataFrame의 각 행 데이터가 튜플로 들어옵니다.
+        data = [dict(zip(keys, row)) for row in data_iter]
+        # SQLAlchemy insert 객체를 만들고, MySQL 전용 prefix "IGNORE"를 추가합니다.
+        stmt = insert(table.table).prefix_with("IGNORE")
+        conn.execute(stmt, data)
 
-        # 열 순서 재배열
-        df = df[["체결시간", "시가", "고가", "저가", "현재가", "거래량"]]
-
-        # 열 이름 변경
-        df = df.rename(columns={
-            "체결시간": "datetime",
-            "시가": "Open",
-            "고가": "High",
-            "저가": "Low",
-            "현재가": "Close",
-            "거래량": "Volume"
-        })
-
-        # 거래대금(TradingValue) 열 추가: Volume * ((Open+High+Low+Close)/4) / 100000000을 소수점 3번째 자리에서 반올림
-        df['TradingValue'] = ((df['Volume'] * ((df['Open'] + df['High'] + df['Low'] + df['Close']) / 4)) / 100000000.0).round(3)
-
-        # 두 번째 열(인덱스 1)에 'name' 열을 추가하고, 모든 행의 값을 stock_name으로 설정
-        df.insert(1, 'name', stock_name)
-
-        # datetime 열을 인덱스로 설정
-        df.set_index("datetime", inplace=True)
-
-        # Open, High, Low, Close 열에 대해 절대값 변환
-        columns_to_transform = ["Open", "High", "Low", "Close"]
-        df[columns_to_transform] = df[columns_to_transform].abs()
-
-        # 필요한 경우 추가 데이터 변환 작업 수행 (예: 행 순서 뒤집기)
-        # df = df.iloc[::-1].reset_index(drop=True)
-
-        return df
-
+    
+    
 
 class DBsave:
     def __init__(self, host='127.0.0.1', user='root', password='219423', db='trading', charset='utf8mb4'):
@@ -492,6 +596,9 @@ def add2(a,b):
     return add1(a,b)
 
 
+
+
+
 def create_common_objects(kiwoom_lab=None):
     if kiwoom_lab is None:
         global kiwoom
@@ -547,6 +654,10 @@ def update_tickers(kiwoom_lab = None, json_path = "C:/workspace/systemtrading/ex
     return new_stocks
 
 ########################################################################################################
+
+
+
+
 
 def several_candlestick_save(stock_name_list, kiwoom_lab = None, date='20250211'):
     get_data, prepro_data, data_save = create_common_objects(kiwoom_lab)
